@@ -82,7 +82,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-BASE_DIR = os.path.dirname(os.path.abspath(_file_))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Load model artifacts
 model = joblib.load(os.path.join(BASE_DIR, 'model/xgb_churn_model.pkl'))
