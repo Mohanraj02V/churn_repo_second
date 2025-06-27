@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-cb0cbhg@px^r6-n=kzy6%ln85rzyl&vmbb50p#)xl+jqlesk+(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['https://churn-repo-second.onrender.com','*']
 
 
 # Application definition
