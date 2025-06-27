@@ -142,6 +142,7 @@ class PredictChurnAPIView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 '''
+'''
 import joblib
 import pandas as pd
 from rest_framework.views import APIView
@@ -182,6 +183,60 @@ class PredictChurnAPIView(APIView):
             final_df = pd.concat([input_df[numeric_features], encoded_df], axis=1)
 
             x_input = final_df
+            pred = model.predict(x_input)[0]
+            proba = model.predict_proba(x_input)[0][1]
+
+            return Response({
+                "prediction": "Yes" if pred == 1 else "No",
+                "churn_probability": round(proba * 100, 2)
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+'''
+import joblib
+import pandas as pd
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Load model and preprocessors
+model = joblib.load(os.path.join(BASE_DIR, 'model/xgb_churn_model.pkl'))
+scaler = joblib.load(os.path.join(BASE_DIR, 'model/scaler.pkl'))
+encoder = joblib.load(os.path.join(BASE_DIR, 'model/encoder.pkl'))
+imputer = joblib.load(os.path.join(BASE_DIR, 'model/imputer.pkl'))
+numeric_features = joblib.load(os.path.join(BASE_DIR, 'model/numeric_features.pkl'))
+categorical_features = joblib.load(os.path.join(BASE_DIR, 'model/categorical_features.pkl'))
+encoded_cols = joblib.load(os.path.join(BASE_DIR, 'model/encoded_columns.pkl'))
+
+class PredictChurnAPIView(APIView):
+    def post(self, request):
+        try:
+            input_data = request.data
+
+            # ✅ Ensure required fields are present
+            required_fields = numeric_features + [col for col in categorical_features if col not in ['customerID', 'Churn']]
+            missing_fields = [field for field in required_fields if field not in input_data]
+            if missing_fields:
+                return Response({"error": f"Missing required field(s): {', '.join(missing_fields)}"}, status=status.HTTP_400_BAD_REQUEST)
+
+            input_df = pd.DataFrame([input_data])
+
+            # Handle missing or bad TotalCharges values
+            input_df['TotalCharges'] = pd.to_numeric(input_df['TotalCharges'], errors='coerce').fillna(0.0)
+            input_df['Avg_Monthly_Charge'] = input_df['TotalCharges'] / (input_df['tenure'] + 1)
+
+            # Transform
+            input_df[numeric_features] = imputer.transform(input_df[numeric_features])
+            input_df[numeric_features] = scaler.transform(input_df[numeric_features])
+            encoded = encoder.transform(input_df[categorical_features])
+            encoded_df = pd.DataFrame(encoded, columns=encoded_cols)
+
+            x_input = pd.concat([input_df[numeric_features].reset_index(drop=True), encoded_df.reset_index(drop=True)], axis=1)
+
             pred = model.predict(x_input)[0]
             proba = model.predict_proba(x_input)[0][1]
 
