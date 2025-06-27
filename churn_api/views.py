@@ -85,6 +85,7 @@ import numpy as np
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Fixed path to go up one level
 
 class PredictChurnAPIView(APIView):
+    '''
     # Load model artifacts once when the class is loaded
     MODEL_PATH = os.path.join(BASE_DIR, 'model/xgb_churn_model.pkl')
     SCALER_PATH = os.path.join(BASE_DIR, 'model/scaler.pkl')
@@ -93,15 +94,16 @@ class PredictChurnAPIView(APIView):
     NUMERIC_FEATURES_PATH = os.path.join(BASE_DIR, 'model/numeric_features.pkl')
     CATEGORICAL_FEATURES_PATH = os.path.join(BASE_DIR, 'model/categorical_features.pkl')
     ENCODED_COLS_PATH = os.path.join(BASE_DIR, 'model/encoded_columns.pkl')
+    '''
 
     try:
-        model = joblib.load(MODEL_PATH)
-        scaler = joblib.load(SCALER_PATH)
-        encoder = joblib.load(ENCODER_PATH)
-        imputer = joblib.load(IMPUTER_PATH)
-        numeric_features = joblib.load(NUMERIC_FEATURES_PATH)
-        categorical_features = joblib.load(CATEGORICAL_FEATURES_PATH)
-        encoded_cols = joblib.load(ENCODED_COLS_PATH)
+        model = joblib.load(os.path.join(BASE_DIR, 'model/xgb_churn_model.pkl'))
+        scaler = joblib.load(os.path.join(BASE_DIR, 'model/scaler.pkl'))
+        encoder = joblib.load(os.path.join(BASE_DIR, 'model/encoder.pkl'))
+        imputer = joblib.load(os.path.join(BASE_DIR, 'model/imputer.pkl'))
+        numeric_features = joblib.load(os.path.join(BASE_DIR, 'model/numeric_features.pkl'))
+        categorical_features = joblib.load(os.path.join(BASE_DIR, 'model/categorical_features.pkl'))
+        encoded_cols = joblib.load(os.path.join(BASE_DIR, 'model/encoded_columns.pkl'))
     except Exception as e:
         raise RuntimeError(f"Failed to load model artifacts: {str(e)}")
 
