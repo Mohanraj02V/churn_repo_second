@@ -1,4 +1,4 @@
-import joblib
+"""import joblib
 import pandas as pd
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -73,3 +73,105 @@ class PredictChurnAPIView(APIView):
 #   "MonthlyCharges": 80.35,
 #   "TotalCharges": 401.75
 # }
+"""
+import joblib
+import pandas as pd
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+import os
+import numpy as np
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Fixed path to go up one level
+
+class PredictChurnAPIView(APIView):
+    # Load model artifacts once when the class is loaded
+    MODEL_PATH = os.path.join(BASE_DIR, 'model/xgb_churn_model.pkl')
+    SCALER_PATH = os.path.join(BASE_DIR, 'model/scaler.pkl')
+    ENCODER_PATH = os.path.join(BASE_DIR, 'model/encoder.pkl')
+    IMPUTER_PATH = os.path.join(BASE_DIR, 'model/imputer.pkl')
+    NUMERIC_FEATURES_PATH = os.path.join(BASE_DIR, 'model/numeric_features.pkl')
+    CATEGORICAL_FEATURES_PATH = os.path.join(BASE_DIR, 'model/categorical_features.pkl')
+    ENCODED_COLS_PATH = os.path.join(BASE_DIR, 'model/encoded_columns.pkl')
+
+    try:
+        model = joblib.load(MODEL_PATH)
+        scaler = joblib.load(SCALER_PATH)
+        encoder = joblib.load(ENCODER_PATH)
+        imputer = joblib.load(IMPUTER_PATH)
+        numeric_features = joblib.load(NUMERIC_FEATURES_PATH)
+        categorical_features = joblib.load(CATEGORICAL_FEATURES_PATH)
+        encoded_cols = joblib.load(ENCODED_COLS_PATH)
+    except Exception as e:
+        raise RuntimeError(f"Failed to load model artifacts: {str(e)}")
+
+    REQUIRED_FIELDS = [
+        'gender', 'SeniorCitizen', 'Partner', 'Dependents', 'tenure',
+        'PhoneService', 'MultipleLines', 'InternetService', 'OnlineSecurity',
+        'OnlineBackup', 'DeviceProtection', 'TechSupport', 'StreamingTV',
+        'StreamingMovies', 'Contract', 'PaperlessBilling', 'PaymentMethod',
+        'MonthlyCharges', 'TotalCharges'
+    ]
+
+    def post(self, request):
+        try:
+            # 1. Validate input data
+            input_data = request.data
+            missing_fields = [field for field in self.REQUIRED_FIELDS if field not in input_data]
+            if missing_fields:
+                return Response(
+                    {"error": f"Missing required fields: {missing_fields}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 2. Create DataFrame with proper type conversion
+            input_df = pd.DataFrame([input_data])
+            
+            # Convert numeric fields explicitly
+            numeric_fields = ['SeniorCitizen', 'tenure', 'MonthlyCharges', 'TotalCharges']
+            for field in numeric_fields:
+                input_df[field] = pd.to_numeric(input_df[field], errors='coerce')
+
+            # 3. Feature Engineering with safety checks
+            input_df['Avg_Monthly_Charge'] = np.where(
+                input_df['tenure'] > 0,
+                input_df['TotalCharges'] / input_df['tenure'],
+                input_df['MonthlyCharges']  # Fallback for zero tenure
+            )
+
+            # 4. Handle categorical features
+            filtered_categorical_features = [col for col in self.categorical_features 
+                                          if col not in ['customerID', 'Churn']]
+
+            # 5. Preprocessing pipeline
+            # Impute missing values
+            input_df[self.numeric_features] = self.imputer.transform(input_df[self.numeric_features])
+            
+            # Scale numeric features
+            input_df[self.numeric_features] = self.scaler.transform(input_df[self.numeric_features])
+            
+            # Encode categorical features
+            encoded_features = self.encoder.transform(input_df[filtered_categorical_features])
+            input_df[self.encoded_cols] = encoded_features
+
+            # 6. Make prediction
+            x_input = input_df[self.numeric_features + self.encoded_cols]
+            pred = self.model.predict(x_input)[0]
+            proba = self.model.predict_proba(x_input)[0][1]
+            
+            result = {
+                "prediction": "Yes" if pred == 1 else "No",
+                "churn_probability": round(float(proba) * 100, 2),  # Explicit float conversion
+                "status": "success"
+            }
+            return Response(result, status=status.HTTP_200_OK)
+
+        except KeyError as e:
+            return Response({"error": f"Missing field in input data: {str(e)}"}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as e:
+            return Response({"error": f"Invalid data format: {str(e)}"}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": f"Prediction failed: {str(e)}"}, 
+                          status=status.HTTP_500_INTERNAL_SERVER_ERROR)
