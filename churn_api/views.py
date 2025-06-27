@@ -75,6 +75,7 @@ class PredictChurnAPIView(APIView):
 #   "TotalCharges": 401.75
 # }
 '''
+'''
 import os
 import joblib
 import pandas as pd
@@ -138,5 +139,50 @@ class PredictChurnAPIView(APIView):
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+'''
+class PredictChurnAPIView(APIView):
+    def post(self, request):
+        try:
+            input_data = request.data
+
+            # Validate required fields
+            required_fields = ['tenure', 'MonthlyCharges', 'TotalCharges']
+            for field in required_fields:
+                if field not in input_data:
+                    return Response({"error": f"Missing required field: '{field}'"}, status=status.HTTP_400_BAD_REQUEST)
+
+            input_df = pd.DataFrame([input_data])
+
+            # Handle any missing or null TotalCharges
+            if pd.isnull(input_df['TotalCharges'].iloc[0]) or input_df['TotalCharges'].iloc[0] == "":
+                input_df['TotalCharges'] = 0.0
+            else:
+                input_df['TotalCharges'] = pd.to_numeric(input_df['TotalCharges'], errors='coerce').fillna(0.0)
+
+            # Avg_Monthly_Charge feature
+            input_df['Avg_Monthly_Charge'] = input_df['TotalCharges'] / (input_df['tenure'] + 1)
+
+            # Filter categorical features
+            filtered_categorical_features = [col for col in categorical_features if col not in ['customerID', 'Churn']]
+
+            # Impute → Scale → Encode
+            input_df[numeric_features] = imputer.transform(input_df[numeric_features])
+            input_df[numeric_features] = scaler.transform(input_df[numeric_features])
+            encoded = encoder.transform(input_df[filtered_categorical_features])
+            encoded_df = pd.DataFrame(encoded, columns=encoded_cols)
+            input_df.reset_index(drop=True, inplace=True)
+            final_df = pd.concat([input_df[numeric_features], encoded_df], axis=1)
+
+            x_input = final_df
+            pred = model.predict(x_input)[0]
+            proba = model.predict_proba(x_input)[0][1]
+
+            return Response({
+                "prediction": "Yes" if pred == 1 else "No",
+                "churn_probability": round(proba * 100, 2)
+            }, status=status.HTTP_200_OK)
+
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
